@@ -832,7 +832,7 @@ func (d *Driver) createKeyPair() error {
 		return err
 	}
 
-	log.Infof("Registering SSH key pair...")
+	log.Infof("Registering SSH key pair foobar...")
 
 	p := cs.SSH.NewRegisterSSHKeyPairParams(d.SSHKeyPair, string(publicKey))
 	if d.ProjectID != "" {

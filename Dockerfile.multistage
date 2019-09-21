@@ -1,0 +1,89 @@
+ARG CI_PIPELINE_ID
+
+FROM registry.gitlab.cc-asp.fraunhofer.de:4567/dockerimages/debian-go-stable:latest AS golangenv1
+# which is
+#FROM golang:1.13.0-buster as golangenv1
+#RUN apt-get -y update && apt-get -y install wget curl git nano &&\
+#    apt-get -y install rpm librpmbuild8 build-essential &&\
+#    go version &&\
+#    wget https://github.com/goreleaser/goreleaser/releases/download/v0.117.2/goreleaser_amd64.deb &&\
+#    dpkg -i goreleaser_amd64.deb && rm -f goreleaser_amd64.deb &&\
+#    mkdir -p /root/go/bin && mkdir /root/go/src/ &&\
+#    curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh &&\
+#    which dep &&\
+#    cp /go/bin/dep /usr/bin/ && dep version
+
+WORKDIR /root/go/src/
+
+# FROM golang:1.6.2 as golangenv2
+
+# RUN go get github.com/mitchellh/gox \
+#           github.com/Masterminds/glide \
+#           github.com/tcnksm/ghr
+
+# Trust everyone to allow glide to execute `hg paths` on mounted volumes
+# https://www.mercurial-scm.org/wiki/Trust
+# RUN echo "[trusted]\nusers=*" > /etc/mercurial/hgrc
+
+FROM golangenv1 as loggingdemo
+
+ENV GOPATH "/app/" 
+ENV DMCS_LOGGING 1 
+ENV LOGPATH="/var/log/docker/machine/"
+
+RUN mkdir -p /app/src/pkg/
+RUN mkdir -p $LOGPATH
+COPY ./logging.go /app/src/
+COPY pkg/logger.go /app/src/pkg/
+WORKDIR /app/src/
+RUN go build logging.go
+RUN strings ./logging
+RUN ./logging &&\
+    ls -alh ; ls -alh $LOGPATH &&\
+    echo "below should be a listing of an example log file!" &&\
+    find $LOGPATH -type f -print0 | shuf -zn1 | xargs -0 cat
+
+
+FROM golangenv1 as builder1
+COPY . /root/go/src/app/
+WORKDIR /root/go/src/app/
+RUN ls -alh
+ENV GOPATH "/root/go/"
+RUN echo "filter msg string in code." && cat cloudstack.go | grep "Registering SSH"
+RUN dep ensure &&\
+    goreleaser check -f .goreleaser.yml &&\
+    goreleaser --snapshot --skip-publish && ls -alh dist/ &&\
+    cd dist/ &&\
+    dpkg-deb -R docker-machine-driver-cloudstack_docker-machine-driver-cloudstack-next_linux_amd64.deb unpacked
+WORKDIR /root/go/src/app/dist/unpacked/usr/bin/
+RUN pwd && ls -alh
+RUN echo "check for custom debug messages"
+RUN /usr/bin/strings docker-machine-driver-cloudstack | grep "Registering SSH" > grep.txt
+RUN ls -alh && cat grep.txt
+
+    
+# FROM golangenv2 as builder2
+# RUN go get -u github.com/golang/dep/cmd/dep &&\
+#     go get github.com/mitchellh/gox &&\
+#    $GOPATH/bin/dep ensure &&\
+#    test -n "$TRAVIS_TAG" && test $TRAVIS_GO_VERSION = $GO_FOR_RELEASE && make release
+
+
+FROM ubuntu:latest
+WORKDIR /test/
+COPY --from=builder1 /root/go/src/app/dist/docker-machine-driver-cloudstack_docker-machine-driver-cloudstack-next_linux_amd64.deb /test/dm-cs-amd64.deb
+ENV CI_PIPELINE_ID $CI_PIPELINE_ID
+RUN pwd && ls -alh &&\
+    echo CI_PIPELINE_ID=${CI_PIPELINE_ID} &&\
+    CI_PIPELINE_ID=12345 &&\
+    echo CI_PIPELINE_ID=${CI_PIPELINE_ID} &&\
+    mv /test/dm-cs-amd64.deb /test/dm-cs-amd64-${CI_PIPELINE_ID}.deb &&\
+    apt-get -y update && apt-get -y install curl &&\
+    base=https://github.com/docker/machine/releases/download/v0.16.0 &&\
+    curl -L $base/docker-machine-$(uname -s)-$(uname -m) >/tmp/docker-machine &&\
+    mv /tmp/docker-machine /usr/local/bin/docker-machine &&\
+    chmod +x /usr/local/bin/docker-machine &&\
+    docker-machine --version &&\
+    dpkg -i ./dm-cs-amd64-${CI_PIPELINE_ID}.deb &&\
+    dpkg --list | grep "docker"
+

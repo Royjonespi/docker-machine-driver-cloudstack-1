@@ -1,0 +1,78 @@
+---
+# This is an example goreleaser.yaml file with some sane defaults.
+# Make sure to check the documentation at http://goreleaser.com
+project_name: docker-machine-driver-cloudstack
+builds:
+-
+  binary: docker-machine-driver-cloudstack
+  main: ./bin/main.go
+  env:
+    - CGO_ENABLED=0
+
+  goos:
+#    - windows
+#    - darwin
+    - linux
+  hooks:
+    pre: dep ensure
+
+  goarch:
+    - amd64
+#    - 386
+
+nfpms:
+  - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    vendor: Dustin Hendel
+    homepage: https://github.com/dahendel/docker-machine-cloudstack
+    maintainer: Dustin Hendel <dustinhendel@gmail.com>
+    description: Cloudstack driver for docker-machine build CI_TAG
+    license: Apache 2.0
+    formats:
+      - deb
+ #     - rpm
+    bindir: /usr/bin
+
+archives:
+  - name_template: "{{ .ProjectName }}_{{ .Os }}.{{ .Arch }}"
+    format: binary
+    replacements:
+      darwin: Darwin
+      linux: Linux
+      windows: Windows
+      amd64: amd64
+
+checksum:
+  name_template: 'checksums.txt'
+
+release:
+  # Repo in which the release will be created.
+  # Default is extracted from the origin remote URL.
+  github:
+    owner: dahendel
+    name: docker-machine-driver-cloudstack
+
+  # If set to true, will not auto-publish the release.
+  # Default is false.
+  draft: false
+
+  # If set to true, will mark the release as not ready for production.
+  # Default is false.
+  prerelease: false
+
+  # You can change the name of the GitHub release.
+  # This is parsed with the Go template engine and the following variables
+  # are available:
+  # - ProjectName
+  # - Tag
+  # - Version (Git tag without `v` prefix)
+  # Default is ``
+  name_template: "{{.ProjectName}}-v{{.Version}}"
+
+snapshot:
+  name_template: "{{ .ProjectName }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
